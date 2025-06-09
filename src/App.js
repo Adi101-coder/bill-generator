@@ -1,5 +1,10 @@
 import React, { useState, useRef } from 'react';
 import { Upload, FileText, Download, Eye, Edit2, Calculator } from 'lucide-react';
+import * as pdfjsLib from 'pdfjs-dist';
+import './App.css';
+
+// Initialize PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 const BillGenerator = () => {
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -53,27 +58,67 @@ const BillGenerator = () => {
     return result.trim() + ' Rupees Only';
   };
 
-  // Mock PDF extraction function
+  // Helper to format numbers with commas
+  function formatAmount(num) {
+    if (typeof num !== 'number' || isNaN(num)) return '';
+    return num.toLocaleString('en-IN');
+  }
+
+  // Helper to format numbers as Indian currency
+  function formatINRCurrency(num) {
+    if (typeof num !== 'number' || isNaN(num)) return '';
+    return '₹ ' + num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
   const extractDataFromPDF = async (file) => {
     setIsProcessing(true);
-    
-    // Simulate PDF processing delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Mock extracted data based on the reference images
-    const mockData = {
-      customerName: "AVADHESH KUMAR GUPTA",
-      customerAddress: "11A KHADEPUR NEW BASTI YOGENDRA BIHAR-2 POST-NAUBASTA KANPUR KANPUR NAGAR UTTAR PRADESH 208021 INDIA KANPUR NAGAR UTTAR PRADESH NEAR SHRI RAM PLACE 208021",
-      manufacturer: "WHIRLPOOL",
-      assetCategory: "AIR CONDITIONER",
-      model: "3DCOOL PRO 1ST 3S INV EXP SSM2PB1-42466",
-      imeiSerialNumber: "42466FT251105119",
-      date: new Date().toISOString().split('T')[0],
-      assetCost: 21000.00
-    };
-    
-    setExtractedData(mockData);
-    setIsProcessing(false);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        fullText += textContent.items.map(item => item.str).join(' ') + ' ';
+      }
+
+      // Customer Name: first 2-3 words after 'Customer Name'
+      const customerNameMatch = fullText.match(/Customer Name:?[ \t]*([A-Za-z]+(?:\s+[A-Za-z]+){0,2})/i);
+      // Manufacturer: only the first word/value after the label
+      const manufacturerMatch = fullText.match(/Manufacturer:?[ \t]*([^ \t\n]+)/i);
+      // Customer Address: up to and including first 6-digit pincode
+      const addressMatch = fullText.match(/Address:?[ \t]*([\s\S]*?\d{6})/i);
+      // Asset Category: match 'Air Conditioner' or similar (case-insensitive, up to line break)
+      const assetCategoryMatch = fullText.match(/Asset Category:?[ \t]*((Air Conditioner|AIR CONDITIONER|Air\s*Conditioner|AC|A\.C\.)?)/i);
+      // Model: full cell content after 'Model' up to 'Asset Category' or line break
+      const modelMatch = fullText.match(/Model:?\s*([^\n\r]+?)(?=\s*Asset Category|\n|\r)/i);
+      // Serial Number: only the first word/value after the label
+      const serialNumberMatch = fullText.match(/Serial Number:?[ \t]*([^ \t\n]+)/i);
+      // Asset Cost: from Disbursement Particulars table (A. Asset Cost row)
+      const assetCostMatch = fullText.match(/A\. Asset Cost[^\d]*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/i);
+      let assetCost = 0;
+      if (assetCostMatch) {
+        assetCost = parseFloat(assetCostMatch[1].replace(/,/g, ''));
+      }
+
+      const extractedData = {
+        customerName: customerNameMatch ? customerNameMatch[1].trim() : '',
+        customerAddress: addressMatch ? addressMatch[1].trim() : '',
+        manufacturer: manufacturerMatch ? manufacturerMatch[1].trim() : '',
+        assetCategory: assetCategoryMatch && assetCategoryMatch[1] ? assetCategoryMatch[1].trim() : '',
+        model: modelMatch ? modelMatch[1].trim() : '',
+        imeiSerialNumber: serialNumberMatch ? serialNumberMatch[1].trim() : '',
+        date: new Date().toISOString().split('T')[0],
+        assetCost: assetCost
+      };
+
+      setExtractedData(extractedData);
+    } catch (error) {
+      console.error('Error extracting PDF data:', error);
+      alert('Error extracting data from PDF. Please make sure the PDF is properly formatted.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleFileUpload = (event) => {
@@ -107,189 +152,153 @@ const BillGenerator = () => {
 
   const generateBillHTML = () => {
     if (!extractedData || !invoiceNumber) return '';
-    
     const taxDetails = calculateTaxDetails(extractedData.assetCost, extractedData.assetCategory);
-    const currentDate = new Date().toLocaleDateString('en-GB');
-    
+    const amountInWords = numberToWords(extractedData.assetCost);
+    const taxAmountInWords = numberToWords(parseFloat(taxDetails.totalTaxAmount));
     return `
-      <div style="width: 210mm; min-height: 297mm; margin: 0 auto; padding: 10mm; font-family: Arial, sans-serif; font-size: 10px; line-height: 1.2; box-sizing: border-box;">
-        <div style="text-align: center; font-size: 14px; font-weight: bold; margin-bottom: 20px;">
-          Tax Invoice
-        </div>
-        
-        <table style="width: 100%; border-collapse: collapse; border: 2px solid black; margin-bottom: 10px;">
-          <tr>
-            <td style="border: 1px solid black; padding: 5px; width: 50%; vertical-align: top;">
-              <strong>KATIYAR ELECTRONICS</strong><br>
-              H.I.G J-33 VISHWABANKBARRA<br>
-              KARRAHI<br>
-              KANPUR NAGAR<br>
-              GSTIN/UIN: 09AMTFK9751D1ZH<br>
-              State Name : Uttar Pradesh, Code : 09<br>
-              E-Mail : katiyar552@gmail.com
-            </td>
-            <td style="border: 1px solid black; padding: 5px; width: 25%; vertical-align: top;">
-              <div style="margin-bottom: 10px;">
-                <strong>Invoice No.</strong><br>
-                ${invoiceNumber}
-              </div>
-              <div style="margin-bottom: 10px;">
-                <strong>Delivery Note</strong><br>
-              </div>
-              <div style="margin-bottom: 10px;">
-                <strong>Buyer's Order No.</strong><br>
-              </div>
-              <div style="margin-bottom: 10px;">
-                <strong>Dispatch Doc No.</strong><br>
-              </div>
-              <div>
-                <strong>Dispatched through</strong><br>
-              </div>
-            </td>
-            <td style="border: 1px solid black; padding: 5px; width: 25%; vertical-align: top;">
-              <div style="margin-bottom: 10px;">
-                <strong>Dated</strong><br>
-                ${currentDate}
-              </div>
-              <div style="margin-bottom: 10px;">
-                <strong>Dated</strong><br>
-              </div>
-              <div style="margin-bottom: 10px;">
-                <strong>Delivery Note Date</strong><br>
-              </div>
-              <div>
-                <strong>Destination</strong><br>
-              </div>
-            </td>
-          </tr>
-        </table>
-
-        <table style="width: 100%; border-collapse: collapse; border: 2px solid black; margin-bottom: 10px;">
-          <tr>
-            <td style="border: 1px solid black; padding: 5px; width: 50%; vertical-align: top;">
-              <strong>Consignee (Ship to)</strong><br><br>
-              <strong>${extractedData.customerName}</strong><br>
-              ${extractedData.customerAddress.length > 100 ? 
-                extractedData.customerAddress.substring(0, 100) + '<br>' + 
-                extractedData.customerAddress.substring(100) : 
-                extractedData.customerAddress}
-            </td>
-            <td style="border: 1px solid black; padding: 5px; width: 50%; vertical-align: top;">
-              <strong>Buyer (Bill to)</strong><br><br>
-              <strong>${extractedData.customerName}</strong><br>
-              ${extractedData.customerAddress.length > 100 ? 
-                extractedData.customerAddress.substring(0, 100) + '<br>' + 
-                extractedData.customerAddress.substring(100) : 
-                extractedData.customerAddress}
-            </td>
-          </tr>
-        </table>
-
-        <table style="width: 100%; border-collapse: collapse; border: 2px solid black;">
-          <tr style="background-color: #f0f0f0;">
-            <td style="border: 1px solid black; padding: 5px; text-align: center; width: 5%;"><strong>Sl</strong></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center; width: 35%;"><strong>Description of Goods</strong></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center; width: 15%;"><strong>HSN/SAC</strong></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center; width: 10%;"><strong>Quantity</strong></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center; width: 10%;"><strong>Rate</strong></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center; width: 5%;"><strong>per</strong></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center; width: 20%;"><strong>Amount</strong></td>
-          </tr>
-          <tr>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;">1</td>
-            <td style="border: 1px solid black; padding: 5px; vertical-align: top;">
-              <strong>${extractedData.manufacturer} ${extractedData.assetCategory}</strong><br><br>
-              <strong>Model No:</strong> ${extractedData.model}<br>
-              <strong>Serial No:</strong> ${extractedData.imeiSerialNumber}<br><br>
-              <div style="display: flex; justify-content: space-between;">
-                <div><strong>CGST</strong></div>
-                <div>${taxDetails.cgst}</div>
-              </div>
-              <div style="display: flex; justify-content: space-between;">
-                <div><strong>SGST</strong></div>
-                <div>${taxDetails.sgst}</div>
-              </div>
-            </td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;"></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;">1 PCS</td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;">${taxDetails.rate}</td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;">PCS</td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;">${taxDetails.rate}</td>
-          </tr>
-          <tr style="height: 200px;">
-            <td style="border: 1px solid black; padding: 5px;" colspan="7"></td>
-          </tr>
-          <tr>
-            <td style="border: 1px solid black; padding: 5px; text-align: right;" colspan="6"><strong>Total</strong></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;"><strong>₹ ${extractedData.assetCost.toFixed(2)}</strong></td>
-          </tr>
-        </table>
-
-        <div style="margin: 10px 0;">
-          <strong>Amount Chargeable (in words)</strong><br>
-          <strong>INR ${numberToWords(extractedData.assetCost)}</strong>
-        </div>
-
-        <table style="width: 100%; border-collapse: collapse; border: 2px solid black; margin-bottom: 10px;">
-          <tr style="background-color: #f0f0f0;">
-            <td style="border: 1px solid black; padding: 5px; text-align: center;" rowspan="2"><strong>HSN/SAC</strong></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;" rowspan="2"><strong>Taxable Value</strong></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;" colspan="2"><strong>Central Tax</strong></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;" colspan="2"><strong>State Tax</strong></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;" rowspan="2"><strong>Total Tax Amount</strong></td>
-          </tr>
-          <tr style="background-color: #f0f0f0;">
-            <td style="border: 1px solid black; padding: 5px; text-align: center;"><strong>Rate</strong></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;"><strong>Amount</strong></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;"><strong>Rate</strong></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;"><strong>Amount</strong></td>
-          </tr>
-          <tr>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;"></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;">${taxDetails.taxableValue}</td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;">${taxDetails.taxRate}%</td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;">${taxDetails.cgst}</td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;">${taxDetails.taxRate}%</td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;">${taxDetails.sgst}</td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;">${taxDetails.totalTaxAmount}</td>
-          </tr>
-          <tr>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;"><strong>Total</strong></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;"><strong>${taxDetails.taxableValue}</strong></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;"></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;"><strong>${taxDetails.cgst}</strong></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;"></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;"><strong>${taxDetails.sgst}</strong></td>
-            <td style="border: 1px solid black; padding: 5px; text-align: center;"><strong>${taxDetails.totalTaxAmount}</strong></td>
-          </tr>
-        </table>
-
-        <div style="margin: 10px 0;">
-          <strong>Tax Amount(in words): INR ${numberToWords(parseFloat(taxDetails.totalTaxAmount))}</strong>
-        </div>
-
-        <table style="width: 100%; border-collapse: collapse; border: 2px solid black; margin-bottom: 20px;">
-          <tr>
-            <td style="border: 1px solid black; padding: 5px; width: 70%; vertical-align: top;">
-              <div style="margin-bottom: 20px;">
-                <strong>Declaration</strong><br>
-                We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.
-              </div>
-            </td>
-            <td style="border: 1px solid black; padding: 5px; width: 30%; vertical-align: top; text-align: center;">
-              <div style="margin-bottom: 20px;">
-                <strong>for KATIYAR ELECTRONICS</strong><br><br><br><br>
-                <strong>Authorised Signatory</strong>
-              </div>
-            </td>
-          </tr>
-        </table>
-
-        <div style="text-align: center; font-size: 8px;">
-          <strong>SUBJECT TO KANPUR JURISDICTION</strong><br>
-          This is a Computer Generated Invoice
-        </div>
+    <div style="width: 100%; max-width: 210mm; min-height: 297mm; margin: 0 auto; font-family: Arial, sans-serif; font-size: 9px; line-height: 1.2; box-sizing: border-box; padding: 5mm;">
+      <div style="text-align:center; font-size:18px; font-weight:bold; margin-bottom:8px;">Tax Invoice</div>
+      <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; margin-bottom: 0;">
+        <tr>
+          <td rowspan="8" style="border:1px solid #000; padding:8px; width:20%; vertical-align:top; font-weight:bold; font-size:8px;">
+            KATIYAR ELECTRONICS<br>
+            H.I.G.J-33 VISHWABANK BARRA<br>
+            KARRAHI<br>
+            KANPUR NAGAR<br>
+            GSTIN/UIN: 09AMTPK9751D1ZH<br>
+            State Name: Uttar Pradesh, Code: 09<br>
+            E-Mail: katiyars952@gmail.com<br><br>
+            <b>Consignee (Ship to)</b><br>
+            Mr. ${extractedData.customerName}<br>
+            ${extractedData.customerAddress}<br><br>
+            <b>Buyer (Bill to)</b><br>
+            Mr. ${extractedData.customerName}<br>
+            ${extractedData.customerAddress}
+          </td>
+          <td style="border:1px solid #000; padding:8px; font-weight:bold; width:12%; font-size:8px; text-align:center;">Invoice No.<div style='height:5px;'></div><div>${invoiceNumber}</div></td>
+          <td style="border:1px solid #000; padding:8px; font-weight:bold; width:13%; font-size:8px; text-align:center;">Dated<div style='height:5px;'></div><div>${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div></td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center;" colspan="2">Delivery Note<div style='height:5px;'></div></td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center;">Buyer's Order No.<div style='height:5px;'></div></td>
+          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center;">Dated<div style='height:5px;'></div></td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center;">Dispatch Doc No.<div style='height:5px;'></div></td>
+          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center;">Delivery Note Date<div style='height:5px;'></div></td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center;">Dispatched through<div style='height:5px;'></div></td>
+          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center;">Destination<div style='height:5px;'></div></td>
+        </tr>
+        <tr>
+          <td colspan="2" style="border:1px solid #000; padding:8px; font-size:8px;"></td>
+        </tr>
+      </table>
+      <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; margin-top:0; margin-bottom: 0;">
+        <tr style="background-color: #f0f0f0;">
+          <td style="border: 1px solid #000; text-align: center; width: 4%; padding: 2px; font-size:8px;"><strong>Sl</strong></td>
+          <td style="border: 1px solid #000; text-align: center; width: 40%; padding: 2px; font-size:8px;"><strong>Description of Goods</strong></td>
+          <td style="border: 1px solid #000; text-align: center; width: 12%; padding: 2px; font-size:8px;"><strong>HSN/SAC</strong></td>
+          <td style="border: 1px solid #000; text-align: center; width: 8%; padding: 2px; font-size:8px;"><strong>Quantity</strong></td>
+          <td style="border: 1px solid #000; text-align: center; width: 12%; padding: 2px; font-size:8px;"><strong>Rate</strong></td>
+          <td style="border: 1px solid #000; text-align: center; width: 4%; padding: 2px; font-size:8px;"><strong>per</strong></td>
+          <td style="border: 1px solid #000; text-align: center; width: 20%; padding: 2px; font-size:8px;"><strong>Amount</strong></td>
+        </tr>
+        <tr>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;">1</td>
+          <td style="border: 1px solid #000; vertical-align: top; padding: 4px; font-size:8px;">
+            <strong>${extractedData.manufacturer} ${extractedData.assetCategory}</strong><br><br>
+            <strong>Model No:</strong> ${extractedData.model}<br>
+            <strong>Serial No:</strong> ${extractedData.imeiSerialNumber}<br><br>
+            <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+              <div><strong>CGST</strong></div>
+              <div>${formatAmount(Number(taxDetails.cgst))}</div>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0;">
+              <div><strong>SGST</strong></div>
+              <div>${formatAmount(Number(taxDetails.sgst))}</div>
+            </div>
+            <div style="height: 350px;"></div>
+          </td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;"></td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;">1 PCS</td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;">${formatAmount(Number(taxDetails.rate))}</td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;">PCS</td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;">${formatAmount(Number(taxDetails.rate))}</td>
+        </tr>
+        <tr>
+          <td style="border: 1px solid #000; text-align: right; padding: 2px; font-size:8px;" colspan="6"><strong>Total</strong></td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;"><strong>₹ ${formatAmount(Number(extractedData.assetCost))}</strong></td>
+        </tr>
+      </table>
+      <div style="margin: 8px 0; font-size:8px;">
+        <strong>Amount Chargeable (in words)</strong><br>
+        <strong>INR ${amountInWords}</strong>
       </div>
+      <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; margin-bottom: 4px;">
+        <tr style="background-color: #f0f0f0;">
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;" rowspan="2"><strong>HSN/SAC</strong></td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;" rowspan="2"><strong>Taxable Value</strong></td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;" colspan="2"><strong>Central Tax</strong></td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;" colspan="2"><strong>State Tax</strong></td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;" rowspan="2"><strong>Total Tax Amount</strong></td>
+        </tr>
+        <tr style="background-color: #f0f0f0;">
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;"><strong>Rate</strong></td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;"><strong>Amount</strong></td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;"><strong>Rate</strong></td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;"><strong>Amount</strong></td>
+        </tr>
+        <tr>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;"></td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;">${formatAmount(Number(taxDetails.taxableValue))}</td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;">${taxDetails.taxRate}%</td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;">${formatAmount(Number(taxDetails.cgst))}</td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;">${taxDetails.taxRate}%</td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;">${formatAmount(Number(taxDetails.sgst))}</td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;">${formatAmount(Number(taxDetails.totalTaxAmount))}</td>
+        </tr>
+        <tr>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;"><strong>Total</strong></td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;"><strong>${formatAmount(Number(taxDetails.taxableValue))}</strong></td>
+          <td style="border: 1px solid #000; padding: 2px; font-size:8px;"></td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;"><strong>${formatAmount(Number(taxDetails.cgst))}</strong></td>
+          <td style="border: 1px solid #000; padding: 2px; font-size:8px;"></td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;"><strong>${formatAmount(Number(taxDetails.sgst))}</strong></td>
+          <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;"><strong>${formatAmount(Number(taxDetails.totalTaxAmount))}</strong></td>
+        </tr>
+      </table>
+      <div style="margin: 8px 0; font-size:8px;">
+        <strong>Tax Amount (in words): INR ${taxAmountInWords}</strong>
+      </div>
+      <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; margin-bottom: 4px;">
+        <tr>
+          <td style="border: 1px solid #000; width: 50%; vertical-align: top; padding: 4px; font-size:8px;">
+            <strong>Declaration</strong><br>
+            We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.
+          </td>
+          <td style="border: 1px solid #000; width: 25%; vertical-align: top; padding: 4px; font-size:8px;">
+            <strong>Pre Authenticated by</strong><br><br>
+            Authorised Signatory<br>
+            Name:<br>
+            Designation:
+          </td>
+          <td style="border: 1px solid #000; width: 25%; vertical-align: top; text-align: center; padding: 4px; font-size:8px;">
+            <strong>for KATIYAR ELECTRONICS</strong><br><br>
+            Authorised Signatory<br>
+            Name:<br>
+            Designation:
+          </td>
+        </tr>
+      </table>
+      <div style="text-align: center; font-size: 8px; margin-top: 4px;">
+        <strong>SUBJECT TO KANPUR JURISDICTION</strong><br>
+        This is a Computer Generated Invoice
+      </div>
+    </div>
     `;
   };
 
@@ -301,8 +310,16 @@ const BillGenerator = () => {
           <title>Tax Invoice</title>
           <style>
             @media print {
-              body { margin: 0; }
-              @page { size: A4; margin: 0; }
+              body { margin: 0; padding: 0; }
+              @page { 
+                size: A4; 
+                margin: 10mm; 
+              }
+            }
+            body {
+              font-family: Arial, sans-serif;
+              margin: 0;
+              padding: 0;
             }
           </style>
         </head>
@@ -316,134 +333,108 @@ const BillGenerator = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-6xl mx-auto">
-        <div className="bg-white rounded-lg shadow-lg p-8">
-          <h1 className="text-3xl font-bold text-center mb-8 text-gray-800">
-            Professional Bill Generator
-          </h1>
+    <div>
+      <div className="bill-container">
+        <h1 className="bill-header">Professional Bill Generator</h1>
 
-          {/* Upload Section */}
-          <div className="mb-8">
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+        {/* Upload Section */}
+        <div className="upload-section">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+            accept=".pdf"
+            className="hidden"
+          />
+          <Upload style={{ width: 56, height: 56, color: '#60a5fa', marginBottom: 16 }} />
+          <p style={{ color: '#2563eb', marginBottom: 16, fontSize: '1.1rem', fontWeight: 500 }}>
+            Upload PDF to extract bill information
+          </p>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="upload-btn"
+          >
+            <FileText style={{ width: 20, height: 20 }} />
+            Choose PDF File
+          </button>
+        </div>
+
+        {/* Processing Indicator */}
+        {isProcessing && (
+          <div className="processing">
+            <span>Processing PDF...</span>
+          </div>
+        )}
+
+        {/* Extracted Data Display */}
+        {extractedData && (
+          <div>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: 16, color: '#2563eb', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Calculator style={{ width: 24, height: 24 }} />
+              Extracted Information
+            </h2>
+            <div className="info-card">
+              <div><strong>Customer Name:</strong> {extractedData.customerName}</div>
+              <div><strong>Manufacturer:</strong> {extractedData.manufacturer}</div>
+              <div className="full"><strong>Customer Address:</strong> {extractedData.customerAddress}</div>
+              <div><strong>Asset Category:</strong> {extractedData.assetCategory}</div>
+              <div><strong>Model:</strong> {extractedData.model}</div>
+              <div><strong>Serial Number:</strong> {extractedData.imeiSerialNumber}</div>
+              <div><strong>Asset Cost:</strong> ₹{extractedData.assetCost.toFixed(2)}</div>
+            </div>
+
+            {/* Invoice Number Input */}
+            <div style={{ marginTop: 32 }}>
+              <label className="input-label">Invoice Number</label>
               <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileUpload}
-                accept=".pdf"
-                className="hidden"
+                type="text"
+                value={invoiceNumber}
+                onChange={(e) => setInvoiceNumber(e.target.value)}
+                placeholder="Enter invoice number"
+                className="input-box"
               />
-              <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-              <p className="text-gray-600 mb-4">
-                Upload PDF to extract bill information
-              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="action-btns">
               <button
-                onClick={() => fileInputRef.current?.click()}
-                className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg flex items-center gap-2 mx-auto"
+                onClick={() => setShowBillPreview(true)}
+                disabled={!invoiceNumber.trim()}
+                className="action-btn"
               >
-                <FileText className="h-5 w-5" />
-                Choose PDF File
+                <Eye style={{ width: 20, height: 20 }} />
+                Preview Bill
+              </button>
+              <button
+                onClick={handlePrint}
+                disabled={!invoiceNumber.trim()}
+                className="action-btn print"
+              >
+                <Download style={{ width: 20, height: 20 }} />
+                Print/Download
               </button>
             </div>
           </div>
+        )}
 
-          {/* Processing Indicator */}
-          {isProcessing && (
-            <div className="text-center mb-8">
-              <div className="inline-flex items-center gap-2 text-blue-600">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                Processing PDF...
-              </div>
-            </div>
-          )}
-
-          {/* Extracted Data Display */}
-          {extractedData && (
-            <div className="mb-8">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <Calculator className="h-5 w-5" />
-                Extracted Information
-              </h2>
-              <div className="bg-gray-50 p-6 rounded-lg grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <strong>Customer Name:</strong> {extractedData.customerName}
-                </div>
-                <div>
-                  <strong>Manufacturer:</strong> {extractedData.manufacturer}
-                </div>
-                <div className="md:col-span-2">
-                  <strong>Customer Address:</strong> {extractedData.customerAddress}
-                </div>
-                <div>
-                  <strong>Asset Category:</strong> {extractedData.assetCategory}
-                </div>
-                <div>
-                  <strong>Model:</strong> {extractedData.model}
-                </div>
-                <div>
-                  <strong>Serial Number:</strong> {extractedData.imeiSerialNumber}
-                </div>
-                <div>
-                  <strong>Asset Cost:</strong> ₹{extractedData.assetCost.toFixed(2)}
-                </div>
-              </div>
-
-              {/* Invoice Number Input */}
-              <div className="mt-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Invoice Number
-                </label>
-                <input
-                  type="text"
-                  value={invoiceNumber}
-                  onChange={(e) => setInvoiceNumber(e.target.value)}
-                  placeholder="Enter invoice number"
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-4 mt-6">
-                <button
-                  onClick={() => setShowBillPreview(true)}
-                  disabled={!invoiceNumber.trim()}
-                  className="bg-green-500 hover:bg-green-600 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg flex items-center gap-2"
-                >
-                  <Eye className="h-5 w-5" />
-                  Preview Bill
-                </button>
-                <button
-                  onClick={handlePrint}
-                  disabled={!invoiceNumber.trim()}
-                  className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg flex items-center gap-2"
-                >
-                  <Download className="h-5 w-5" />
-                  Print/Download
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Bill Preview */}
-          {showBillPreview && extractedData && invoiceNumber && (
-            <div className="mt-8">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold">Bill Preview</h2>
-                <button
-                  onClick={() => setShowBillPreview(false)}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  ✕
-                </button>
-              </div>
-              <div 
-                className="border border-gray-300 bg-white overflow-auto"
-                style={{ maxHeight: '80vh' }}
+        {/* Bill Preview */}
+        {showBillPreview && extractedData && invoiceNumber && (
+          <div className="modal-overlay">
+            <div className="modal-content">
+              <button
+                onClick={() => setShowBillPreview(false)}
+                className="modal-close"
+                aria-label="Close preview"
+              >
+                ×
+              </button>
+              <div
+                style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, overflow: 'auto', maxHeight: '70vh' }}
                 dangerouslySetInnerHTML={{ __html: generateBillHTML() }}
               />
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
