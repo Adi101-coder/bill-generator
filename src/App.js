@@ -158,40 +158,47 @@ const BillGenerator = () => {
     return `
     <div style="width: 100%; max-width: 210mm; min-height: 297mm; margin: 0 auto; font-family: Arial, sans-serif; font-size: 9px; line-height: 1.2; box-sizing: border-box; padding: 5mm;">
       <div style="text-align:center; font-size:18px; font-weight:bold; margin-bottom:8px;">Tax Invoice</div>
-      <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; margin-bottom: 0;">
+      <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; margin-bottom: 0; table-layout: fixed;">
         <tr>
-          <td rowspan="8" style="border:1px solid #000; padding:8px; width:20%; vertical-align:top; font-weight:bold; font-size:8px;">
+          <td rowspan="8" style="border:1px solid #000; padding:8px; width:40%; vertical-align:top; font-weight:bold; font-size:8px;">
             KATIYAR ELECTRONICS<br>
             H.I.G.J-33 VISHWABANK BARRA<br>
             KARRAHI<br>
             KANPUR NAGAR<br>
             GSTIN/UIN: 09AMTPK9751D1ZH<br>
             State Name: Uttar Pradesh, Code: 09<br>
-            E-Mail: katiyars952@gmail.com<br><br>
+            E-Mail: katiyars952@gmail.com<br>
+            <div style="margin-left: -8px; margin-right: -8px;">
+              <hr style="border: none; border-top: 1px solid #000; width: 100%; margin: 0; padding: 0;" />
+            </div>
             <b>Consignee (Ship to)</b><br>
             Mr. ${extractedData.customerName}<br>
-            ${extractedData.customerAddress}<br><br>
+            ${extractedData.customerAddress}<br>
+            <div style="margin-left: -8px; margin-right: -8px;">
+              <hr style="border: none; border-top: 1px solid #000; width: 100%; margin: 0; padding: 0;" />
+            </div>
             <b>Buyer (Bill to)</b><br>
             Mr. ${extractedData.customerName}<br>
             ${extractedData.customerAddress}
           </td>
-          <td style="border:1px solid #000; padding:8px; font-weight:bold; width:12%; font-size:8px; text-align:center;">Invoice No.<div style='height:5px;'></div><div>${invoiceNumber}</div></td>
-          <td style="border:1px solid #000; padding:8px; font-weight:bold; width:13%; font-size:8px; text-align:center;">Dated<div style='height:5px;'></div><div>${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div></td>
+          <td style="border:1px solid #000; padding:8px; font-weight:bold; width:50%; font-size:8px; text-align:center;">Invoice No.<div style='height:5px;'></div><div>${invoiceNumber}</div></td>
+          <td style="border:1px solid #000; padding:8px; font-weight:bold; width:50%; font-size:8px; text-align:center;">Dated<div style='height:5px;'></div><div>${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div></td>
         </tr>
         <tr>
-          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center;" colspan="2">Delivery Note<div style='height:5px;'></div></td>
+          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center; width:50%;">Delivery Note<div style='height:5px;'></div></td>
+          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center; width:50%;"></td>
         </tr>
         <tr>
-          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center;">Buyer's Order No.<div style='height:5px;'></div></td>
-          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center;">Dated<div style='height:5px;'></div></td>
+          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center; width:50%;">Buyer's Order No.<div style='height:5px;'></div></td>
+          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center; width:50%;">Dated<div style='height:5px;'></div></td>
         </tr>
         <tr>
-          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center;">Dispatch Doc No.<div style='height:5px;'></div></td>
-          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center;">Delivery Note Date<div style='height:5px;'></div></td>
+          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center; width:50%;">Dispatch Doc No.<div style='height:5px;'></div></td>
+          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center; width:50%;">Delivery Note Date<div style='height:5px;'></div></td>
         </tr>
         <tr>
-          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center;">Dispatched through<div style='height:5px;'></div></td>
-          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center;">Destination<div style='height:5px;'></div></td>
+          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center; width:50%;">Dispatched through<div style='height:5px;'></div></td>
+          <td style="border:1px solid #000; padding:8px; font-weight:bold; font-size:8px; text-align:center; width:50%;">Destination<div style='height:5px;'></div></td>
         </tr>
         <tr>
           <td colspan="2" style="border:1px solid #000; padding:8px; font-size:8px;"></td>
@@ -234,10 +241,16 @@ const BillGenerator = () => {
           <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;"><strong>₹ ${formatAmount(Number(extractedData.assetCost))}</strong></td>
         </tr>
       </table>
-      <div style="margin: 8px 0; font-size:8px;">
-        <strong>Amount Chargeable (in words)</strong><br>
-        <strong>INR ${amountInWords}</strong>
-      </div>
+      <table style="width: 100%; border-collapse: collapse; border-left: 1.5px solid #000; border-right: 1.5px solid #000; margin: 0;">
+        <tr>
+          <td style="border-left: 1px solid #000; border-right: none; border-top: none; border-bottom: none; width: 1%;"></td>
+          <td style="border: none; font-size:8px; padding: 4px;">
+            <strong>Amount Chargeable (in words)</strong><br>
+            <strong>INR ${amountInWords}</strong>
+          </td>
+          <td style="border-right: 1px solid #000; border-left: none; border-top: none; border-bottom: none; width: 1%;"></td>
+        </tr>
+      </table>
       <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; margin-bottom: 4px;">
         <tr style="background-color: #f0f0f0;">
           <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;" rowspan="2"><strong>HSN/SAC</strong></td>
@@ -270,10 +283,12 @@ const BillGenerator = () => {
           <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;"><strong>${formatAmount(Number(taxDetails.sgst))}</strong></td>
           <td style="border: 1px solid #000; text-align: center; padding: 2px; font-size:8px;"><strong>${formatAmount(Number(taxDetails.totalTaxAmount))}</strong></td>
         </tr>
+        <tr>
+          <td colspan="7" style="border-left: 1.5px solid #000; border-right: 1.5px solid #000; border-top: none; border-bottom: none; font-size:8px; padding: 4px 0; text-align:center;">
+            <strong>Tax Amount (in words): INR ${taxAmountInWords}</strong>
+          </td>
+        </tr>
       </table>
-      <div style="margin: 8px 0; font-size:8px;">
-        <strong>Tax Amount (in words): INR ${taxAmountInWords}</strong>
-      </div>
       <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; margin-bottom: 4px;">
         <tr>
           <td style="border: 1px solid #000; width: 50%; vertical-align: top; padding: 4px; font-size:8px;">
