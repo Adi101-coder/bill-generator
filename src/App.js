@@ -21,41 +21,92 @@ const BillGenerator = () => {
     const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
     
     const convertHundreds = (num) => {
-      let result = '';
+      let words = '';
+      if (typeof num !== 'number' || isNaN(num) || num < 0) return ''; 
+      num = Math.floor(num); 
+
       if (num >= 100) {
-        result += ones[Math.floor(num / 100)] + ' Hundred ';
+        words += ones[Math.floor(num / 100)] + ' Hundred ';
         num %= 100;
       }
       if (num >= 20) {
-        result += tens[Math.floor(num / 10)] + ' ';
+        words += tens[Math.floor(num / 10)] + ' ';
         num %= 10;
       } else if (num >= 10) {
-        result += teens[num - 10] + ' ';
-        return result;
+        words += teens[num - 10] + ' ';
+        num = 0; 
       }
-      if (num > 0) {
-        result += ones[num] + ' ';
+      if (num > 0) { 
+        words += ones[num] + ' ';
       }
-      return result;
+      return words; 
     };
 
     if (amount === 0) return 'Zero Rupees Only';
+    if (typeof amount !== 'number' || isNaN(amount) || amount < 0) return ''; 
     
-    let crores = Math.floor(amount / 10000000);
-    amount %= 10000000;
-    let lakhs = Math.floor(amount / 100000);
-    amount %= 100000;
-    let thousands = Math.floor(amount / 1000);
-    amount %= 1000;
-    let hundreds = amount;
+    const [rupeesStr, paiseStr] = amount.toFixed(2).split('.');
+    let rupees = parseInt(rupeesStr, 10); 
+    let paise = parseInt(paiseStr, 10); 
 
-    let result = '';
-    if (crores > 0) result += convertHundreds(crores) + 'Crore ';
-    if (lakhs > 0) result += convertHundreds(lakhs) + 'Lakh ';
-    if (thousands > 0) result += convertHundreds(thousands) + 'Thousand ';
-    if (hundreds > 0) result += convertHundreds(hundreds);
+    let resultWords = []; 
 
-    return result.trim() + ' Rupees Only';
+    let crores = Math.floor(rupees / 10000000);
+    rupees %= 10000000;
+    if (crores > 0) {
+      resultWords.push(convertHundreds(crores).trim() + ' Crore');
+    }
+
+    let lakhs = Math.floor(rupees / 100000);
+    rupees %= 100000;
+    if (lakhs > 0) {
+      resultWords.push(convertHundreds(lakhs).trim() + ' Lakh');
+    }
+
+    let thousands = Math.floor(rupees / 1000);
+    rupees %= 1000;
+    if (thousands > 0) {
+      resultWords.push(convertHundreds(thousands).trim() + ' Thousand');
+    }
+
+    let hundreds = rupees;
+    if (hundreds > 0) {
+      resultWords.push(convertHundreds(hundreds).trim());
+    }
+    
+    let finalRupeesPart = resultWords.join(' ').trim();
+    if (finalRupeesPart) {
+        finalRupeesPart += ' Rupees';
+    }
+
+    let paiseWords = '';
+    if (paise > 0) {
+      let tempPaise = paise;
+      if (tempPaise >= 20) {
+        paiseWords += tens[Math.floor(tempPaise / 10)] + ' ';
+        tempPaise %= 10;
+      } else if (tempPaise >= 10) {
+        paiseWords += teens[tempPaise - 10] + ' ';
+        tempPaise = 0;
+      }
+      if (tempPaise > 0) { 
+        paiseWords += ones[tempPaise] + ' ';
+      }
+      paiseWords = paiseWords.trim() + ' Paise';
+    }
+
+    let finalAmountInWords = '';
+    if (finalRupeesPart && paiseWords) {
+      finalAmountInWords = finalRupeesPart + ' And ' + paiseWords;
+    } else if (finalRupeesPart) {
+      finalAmountInWords = finalRupeesPart + ' Only';
+    } else if (paiseWords) {
+      finalAmountInWords = paiseWords; 
+    } else { 
+      finalAmountInWords = 'Zero Rupees Only'; 
+    }
+
+    return finalAmountInWords.trim();
   };
 
   // Helper to format numbers with commas
@@ -82,31 +133,80 @@ const BillGenerator = () => {
         fullText += textContent.items.map(item => item.str).join(' ') + ' ';
       }
 
-      // Customer Name: first 2-3 words after 'Customer Name'
-      const customerNameMatch = fullText.match(/Customer Name:?[ \t]*([A-Za-z]+(?:\s+[A-Za-z]+){0,2})/i);
-      // Manufacturer: only the first word/value after the label
-      const manufacturerMatch = fullText.match(/Manufacturer:?[ \t]*([^ \t\n]+)/i);
-      // Customer Address: up to and including first 6-digit pincode
-      const addressMatch = fullText.match(/Address:?[ \t]*([\s\S]*?\d{6})/i);
-      // Asset Category: match 'Air Conditioner' or similar (case-insensitive, up to line break)
-      const assetCategoryMatch = fullText.match(/Asset Category:?[ \t]*((Air Conditioner|AIR CONDITIONER|Air\s*Conditioner|AC|A\.C\.)?)/i);
-      // Model: full cell content after 'Model' up to 'Asset Category' or line break
-      const modelMatch = fullText.match(/Model:?\s*([^\n\r]+?)(?=\s*Asset Category|\n|\r)/i);
-      // Serial Number: only the first word/value after the label
-      const serialNumberMatch = fullText.match(/Serial Number:?[ \t]*([^ \t\n]+)/i);
-      // Asset Cost: from Disbursement Particulars table (A. Asset Cost row)
-      const assetCostMatch = fullText.match(/A\. Asset Cost[^\d]*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/i);
+      const isIDFCBankDoc = fullText.includes('IDFC FIRST Bank');
+
+      let customerNameMatch;
+      let manufacturerMatch;
+      let modelMatch;
+      let assetCostMatch;
       let assetCost = 0;
+
+      let finalCustomerName = '';
+
+      // Customer Name
+      if (isIDFCBankDoc) {
+        // For IDFC, extract name between "loan application of" and "has been approved for"
+        customerNameMatch = fullText.match(/loan application of (.+?) has been approved for/i);
+        finalCustomerName = customerNameMatch ? `${customerNameMatch[1].trim()} [IDFC FIRST BANK]` : '';
+      } else {
+        customerNameMatch = fullText.match(/Customer Name:?[ \t]*([A-Za-z]+(?:\s+[A-Za-z]+){0,2})/i);
+        finalCustomerName = customerNameMatch ? customerNameMatch[1].trim() : '';
+      }
+
+      // Manufacturer
+      if (isIDFCBankDoc) {
+        manufacturerMatch = null;
+      } else {
+        manufacturerMatch = fullText.match(/Manufacturer:?[ \t]*([^ \t\n]+)/i);
+      }
+      let manufacturer = manufacturerMatch ? manufacturerMatch[1].trim() : '';
+
+      // Customer Address: Capture content strictly after the label, up to and including the pincode, then clean up any remaining label
+      const addressMatch = fullText.match(/(?:Customer )?Address:?[ \t]*([\s\S]*?\d{6})/i);
+      let customerAddress = addressMatch ? addressMatch[1].trim() : '';
+      // Re-adding robust post-processing to ensure no label remains in the address string
+      customerAddress = customerAddress.replace(/^(?:Customer )?Address:?[ \t]*(.*)$/i, '$1').trim();
+
+      // Asset Category
+      const rawAssetCategoryMatch = fullText.match(/Asset Category:?[ \t]*([A-Za-z\s]+?)(?=\s*(?:Sub-Category|Variant|\bModel\b|\bSerial Number\b|\bAsset Cost\b|$))/i);
+      let assetCategory = rawAssetCategoryMatch ? rawAssetCategoryMatch[1].trim() : '';
+      if (assetCategory.endsWith('D')) {
+        assetCategory = assetCategory.slice(0, -1).trim();
+      }
+
+      // Model
+      if (isIDFCBankDoc) {
+        // Model will be the Model No in the pdf that I have uploaded
+        modelMatch = fullText.match(/Model Number:?[ \t]*([^\n\r]+?)(?!E\s*(?:Scheme Name|Serial Number|Asset Category|\n|\r))(?=\s*(?:Scheme Name|Serial Number|Asset Category|\n|\r))/i);
+      } else {
+        modelMatch = fullText.match(/Model:?\s*([^\n\r]+?)(?=\s*Asset Category|\n|\r)/i);
+      }
+      let model = modelMatch ? modelMatch[1].trim() : '';
+      if (isIDFCBankDoc && model.endsWith('E')) {
+        model = model.slice(0, -1).trim();
+      }
+
+      // Serial Number
+      const serialNumberMatch = fullText.match(/Serial Number:?[ \t]*([^ \t\n]+)/i);
+
+      // Asset Cost
+      if (isIDFCBankDoc) {
+        // The Asset cost here will be Cost Of Product
+        assetCostMatch = fullText.match(/Cost Of Product[\s:]*([\d,\.]+)/i);
+      } else {
+        assetCostMatch = fullText.match(/A\. Asset Cost[^\d]*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/i);
+      }
       if (assetCostMatch) {
-        assetCost = parseFloat(assetCostMatch[1].replace(/,/g, ''));
+        // Remove all non-numeric characters except the decimal point before parsing
+        assetCost = parseFloat(assetCostMatch[1].replace(/[^0-9.]/g, ''));
       }
 
       const extractedData = {
-        customerName: customerNameMatch ? customerNameMatch[1].trim() : '',
-        customerAddress: addressMatch ? addressMatch[1].trim() : '',
-        manufacturer: manufacturerMatch ? manufacturerMatch[1].trim() : '',
-        assetCategory: assetCategoryMatch && assetCategoryMatch[1] ? assetCategoryMatch[1].trim() : '',
-        model: modelMatch ? modelMatch[1].trim() : '',
+        customerName: finalCustomerName,
+        customerAddress: customerAddress,
+        manufacturer: manufacturer,
+        assetCategory: assetCategory,
+        model: model,
         imeiSerialNumber: serialNumberMatch ? serialNumberMatch[1].trim() : '',
         date: new Date().toISOString().split('T')[0],
         assetCost: assetCost
@@ -155,6 +255,9 @@ const BillGenerator = () => {
     const taxDetails = calculateTaxDetails(extractedData.assetCost, extractedData.assetCategory);
     const amountInWords = numberToWords(extractedData.assetCost);
     const taxAmountInWords = numberToWords(parseFloat(taxDetails.totalTaxAmount));
+
+    console.log('totalTaxAmount before numberToWords:', taxDetails.totalTaxAmount);
+
     return `
     <div style="width: 100%; max-width: 210mm; min-height: 297mm; margin: 0 auto; font-family: Arial, sans-serif; font-size: 9px; line-height: 1.2; box-sizing: border-box; padding: 5mm;">
       <div style="text-align:center; font-size:18px; font-weight:bold; margin-bottom:8px;">Tax Invoice</div>
@@ -172,13 +275,13 @@ const BillGenerator = () => {
               <hr style="border: none; border-top: 1px solid #000; width: 100%; margin: 0; padding: 0;" />
             </div>
             <b>Consignee (Ship to)</b><br>
-            Mr. ${extractedData.customerName}<br>
+            ${extractedData.customerName}<br>
             ${extractedData.customerAddress}<br>
             <div style="margin-left: -8px; margin-right: -8px;">
               <hr style="border: none; border-top: 1px solid #000; width: 100%; margin: 0; padding: 0;" />
             </div>
             <b>Buyer (Bill to)</b><br>
-            Mr. ${extractedData.customerName}<br>
+            ${extractedData.customerName}<br>
             ${extractedData.customerAddress}
           </td>
           <td style="border:1px solid #000; padding:8px; font-weight:bold; width:50%; font-size:8px; text-align:center;">Invoice No.<div style='height:5px;'></div><div>${invoiceNumber}</div></td>
@@ -219,7 +322,7 @@ const BillGenerator = () => {
           <td style="border: 1px solid #000; vertical-align: top; padding: 4px; font-size:8px;">
             <strong>${extractedData.manufacturer} ${extractedData.assetCategory}</strong><br><br>
             <strong>Model No:</strong> ${extractedData.model}<br>
-            <strong>Serial No:</strong> ${extractedData.imeiSerialNumber}<br><br>
+            ${extractedData.imeiSerialNumber ? `<strong>Serial No:</strong> ${extractedData.imeiSerialNumber}<br>` : ''}<br>
             <div style="display: flex; justify-content: space-between; margin-top: 4px;">
               <div><strong>CGST</strong></div>
               <div>${formatAmount(Number(taxDetails.cgst))}</div>
